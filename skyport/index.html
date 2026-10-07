@@ -1927,7 +1927,7 @@ class TaxiPilot {
     this.ac = ac; this.nodes = nodes; this.onDone = onDone; this.lineUp = lineUp; this.stand = stand;
     const pts = nodes.map(id => [NODES[id].x, NODES[id].z]), kinds = nodes.map(id => NODES[id].kind);
     this.pts = [[ac.pos.x, ac.pos.z], ...pts]; this.kinds = ['start', ...kinds];
-    if (lineUp) { const last = this.pts[this.pts.length - 1]; this.pts.push([last[0] + 70, RW.z]); this.kinds.push('end'); }
+    if (lineUp) { const last = this.pts[this.pts.length - 1]; this.pts.push([last[0] + 120, RW.z]); this.kinds.push('end'); }
     if (stand !== null) { const s = standStop(stand, ac); this.pts.push([s.x, s.z]); this.kinds.push('end'); }
     this.holds = []; for (let i = 0; i < this.kinds.length - 1; i++) if (this.kinds[i] === 'hold' && this.kinds[i + 1] === 'rwy') this.holds.push(i);
     this.cleared = {}; this.seg = 0; this.done = false; this.waiting = false;
@@ -1946,14 +1946,18 @@ class TaxiPilot {
     const hdg = ac.headingRad, want = Math.atan2(-(cz - ac.pos.z), cx - ac.pos.x), err = wrapPI(want - hdg);
     const L = Math.max(ac.wheelbase, 3); ac.steer = clamp(Math.atan2(2 * L * Math.sin(err), ld), -1.0, 1.0); // pure pursuit on the nose wheel
     // speed: slow for turns, the hold line and the end of the route
-    const end = P[P.length - 1], dEnd = Math.hypot(end[0] - ac.pos.x, end[1] - ac.pos.z);
+    const end = P[P.length - 1];
+    const along = (k) => { // distance along the route from the aircraft to point k
+      let d = Math.hypot(P[Math.min(this.seg + 1, k)][0] - ac.pos.x, P[Math.min(this.seg + 1, k)][1] - ac.pos.z);
+      for (let i = this.seg + 1; i < k; i++) d += Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]); return d; };
+    const dEnd = along(P.length - 1);
     let turn = 0; for (let i = this.seg; i < Math.min(this.seg + 3, P.length - 2); i++) { const a = P[i], b = P[i + 1], c = P[i + 2]; if (Math.hypot(b[0] - ac.pos.x, b[1] - ac.pos.z) > 70) break; turn = Math.max(turn, Math.abs(wrapPI(Math.atan2(c[1] - b[1], c[0] - b[0]) - Math.atan2(b[1] - a[1], b[0] - a[0])))); }
     let vT = turn > 0.35 ? 8 : 15; if (Math.abs(err) > 0.5) vT = Math.min(vT, 5);
     vT = Math.min(vT, Math.sqrt(2 * 1.0 * Math.max(dEnd - 2, 0)));
     this.waiting = false;
     if (hold !== undefined) {
-      const hp = P[hold], dh = Math.hypot(hp[0] - ac.pos.x, hp[1] - ac.pos.z);
-      if (dh < 160) {
+      const hp = P[hold], dh = along(hold);
+      if (dh < 400) {
         if (runwayFreeFor(ac)) { this.cleared[hold] = true; claimRunway(ac); }
         else {
           this.waiting = true; vT = Math.min(vT, Math.sqrt(2 * 1.2 * Math.max(dh - 4, 0)));
@@ -1967,7 +1971,8 @@ class TaxiPilot {
     ac.brakes = v > vT + 0.5 ? clamp((v - vT) * 0.6, 0, 1) : vT < 0.3 ? 1 : 0;
     // done: at the end point, or past it
     const a = P[P.length - 2], tx = end[0] - a[0], tz = end[1] - a[1], past = this.seg >= P.length - 2 && ((ac.pos.x - a[0]) * tx + (ac.pos.z - a[1]) * tz) / ((tx * tx + tz * tz) || 1) > 1;
-    if ((dEnd < 3 || past) && v < 0.6) { this.finish(); return true; }
+    if ((dEnd < 3 || past || (dEnd < 45 && Math.abs(err) > 1.2)) && v < 0.6) { this.finish(); return true; }
+    if (dEnd < 45 && Math.abs(err) > 1.2) { ac.throttle = 0; ac.brakes = 1; } // end point is inside the turn circle: just stop
     return false;
   }
   finish() { const ac = this.ac; ac.throttle = 0; ac.brakes = 1; ac.steer = 0; this.done = true; if (this.onDone) this.onDone(); }
