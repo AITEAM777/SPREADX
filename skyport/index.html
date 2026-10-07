@@ -1926,9 +1926,6 @@ class TaxiPilot {
   constructor(ac, nodes, { lineUp = false, stand = null, onDone = null } = {}) {
     this.ac = ac; this.nodes = nodes; this.onDone = onDone; this.lineUp = lineUp; this.stand = stand;
     const pts = nodes.map(id => [NODES[id].x, NODES[id].z]), kinds = nodes.map(id => NODES[id].kind);
-    // drop route points that are just behind the aircraft (no U-turns at the start)
-    ac.axes();
-    while (pts.length > 1) { const dx = pts[0][0] - ac.pos.x, dz = pts[0][1] - ac.pos.z; if (dx * _fw.x + dz * _fw.z < 0 && Math.hypot(dx, dz) < 140) { pts.shift(); kinds.shift(); } else break; }
     this.pts = [[ac.pos.x, ac.pos.z], ...pts]; this.kinds = ['start', ...kinds];
     if (lineUp) { const last = this.pts[this.pts.length - 1]; this.pts.push([last[0] + 70, RW.z]); this.kinds.push('end'); }
     if (stand !== null) { const s = standStop(stand, ac); this.pts.push([s.x, s.z]); this.kinds.push('end'); }
@@ -1969,7 +1966,7 @@ class TaxiPilot {
     ac.throttle = clamp(0.1 + (vT - v) * 0.12 + (vT > 0.5 && v < 1 ? 0.15 : 0), 0, 0.55);
     ac.brakes = v > vT + 0.5 ? clamp((v - vT) * 0.6, 0, 1) : vT < 0.3 ? 1 : 0;
     // done: at the end point, or past it
-    const a = P[P.length - 2], tx = end[0] - a[0], tz = end[1] - a[1], past = ((ac.pos.x - a[0]) * tx + (ac.pos.z - a[1]) * tz) / ((tx * tx + tz * tz) || 1) > 1;
+    const a = P[P.length - 2], tx = end[0] - a[0], tz = end[1] - a[1], past = this.seg >= P.length - 2 && ((ac.pos.x - a[0]) * tx + (ac.pos.z - a[1]) * tz) / ((tx * tx + tz * tz) || 1) > 1;
     if ((dEnd < 3 || past) && v < 0.6) { this.finish(); return true; }
     return false;
   }
@@ -2246,14 +2243,14 @@ class AIPlane {
         this.timer -= dt; ac.engineOn = false; ac.v = 0; ac.parkedAtStand = this.stand;
         if (this.timer <= 0 && ai.enabled && ai.list.filter(a => ['pushback', 'taxiOut', 'hold', 'lineup', 'takeoff'].includes(a.state)).length < 1) {
           ac.engineOn = true; ac.parkedAtStand = null; const sx = STAND_X[this.stand], dir = 1;
-          const p0 = standStop(this.stand, ac); this.setCurve([[p0.x, 0, p0.z], [sx, 0, 10], [sx, 0, -22], [sx + dir * 30, 0, LANE_Z]]); this.reverse = true; this.v = 0; this.setState('pushback');
+          const p0 = standStop(this.stand, ac); this.setCurve([[p0.x, 0, p0.z], [sx, 0, 10], [sx, 0, LANE_Z + 24], [sx + dir * 30, 0, LANE_Z], [sx + dir * 55, 0, LANE_Z]]); this.reverse = true; this.v = 0; this.setState('pushback');
         } break;
       case 'pushback':
         if (this.stateT < 3) break; // engines spool, tug connects
         this.v = Math.min(2.2, this.v + dt); this.s = Math.min(this.s + this.v * dt, this.len); this.place(dt, false);
         if (this.s >= this.len) {
           this.reverse = false; standOwner[this.stand] = null; this.stand = null;
-          const from = nearestNode(ac.pos.x, ac.pos.z, n => n.id.startsWith('L')), route = astar(from, 'HA');
+          ac.axes(); const from = nearestNode(ac.pos.x, ac.pos.z, n => n.id.startsWith('L') && ((n.x - ac.pos.x) * _fw.x + (n.z - ac.pos.z) * _fw.z > 5)) || nearestNode(ac.pos.x, ac.pos.z, n => n.id.startsWith('L')), route = astar(from, 'HA');
           this.setCurve(this.groundPts(route, ac.pos, new THREE.Vector3(NODES.HA.x, 0, NODES.HA.z + 2))); this.v = 0; this.setState('taxiOut');
         } break;
       case 'taxiOut': ac.flaps = 1; if (this.rollGround(dt, 10)) this.setState('hold'); break;
@@ -2465,13 +2462,14 @@ function startPushbackAndTaxi() {
   const p = game.player, st = game.stand, sx = STAND_X[st], dir = 1; // tail east → nose west, toward runway 09
   const stop = standStop(st, p);
   p.engineOn = true; standOwner[st] = null; game.stand = null; p.parkedAtStand = null; game.parkBrake = false;
-  game.tow = new Tow(p, [[stop.x, stop.z], [sx, 10], [sx, LANE_Z + 22], [sx + dir * 34, LANE_Z]], { reverse: true, duration: 11, onDone: () => taxiTo('runway') });
+  game.tow = new Tow(p, [[stop.x, stop.z], [sx, 10], [sx, LANE_Z + 24], [sx + dir * 30, LANE_Z], [sx + dir * 55, LANE_Z]], { reverse: true, duration: 13, onDone: () => taxiTo('runway') });
   toast('Pushback…');
 }
 function taxiTo(where) {
   const p = game.player; if (!p) return;
   p.brakes = 0; game.parkBrake = false; if (!p.engineOn) { p.engineOn = true; }
-  const from = nearestNode(p.pos.x, p.pos.z, n => n.kind !== 'stand');
+  p.axes(); const fx = _fw.x, fz = _fw.z; // start from the nearest node ahead of the nose (no U-turns)
+  const from = nearestNode(p.pos.x, p.pos.z, n => n.kind !== 'stand' && ((n.x - p.pos.x) * fx + (n.z - p.pos.z) * fz > 5)) || nearestNode(p.pos.x, p.pos.z, n => n.kind !== 'stand');
   if (where === 'runway') {
     const route = astar(from, 'RA'); if (!route) return;
     p.flaps = Math.max(p.flaps, 1);
