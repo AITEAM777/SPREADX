@@ -1996,7 +1996,7 @@ class AutoLand {
       // lateral: track the centreline (heading east)
       const e = ac.pos.z - RW.z;
       // established = on the extended centreline, inside 4.4 km, heading roughly east; otherwise fly to the capture point
-      if (this.phase === 'capture' && !this.setup && dist > 300 && dist < 6500 && Math.abs(e) < 250 && Math.abs(wrapPI(ac.headingRad)) < 0.5) this.phase = 'glide';
+      if (this.phase === 'capture' && !this.setup && dist > 300 && dist < 7500 && Math.abs(e) < 300 && Math.abs(wrapPI(ac.headingRad)) < 0.5) this.phase = 'glide';
       if (this.phase === 'glide' && (Math.abs(e) > 450 || dist < -50)) { this.phase = 'capture'; this.setup = undefined; }
       const far = this.phase === 'capture';
       let hdgCmd;
@@ -2004,7 +2004,7 @@ class AutoLand {
         // too close or on the wrong side: first fly to a set-up point 6.5 km out, 2.5 km abeam; then intercept the centreline
         if (this.setup === undefined) this.setup = dist < 5200;
         if (this.setup) { const side = e >= 0 ? 1 : -1, tx = aim - 6500, tz = RW.z + side * 2500; hdgCmd = Math.atan2(-(tz - ac.pos.z), tx - ac.pos.x); if (Math.hypot(tx - ac.pos.x, tz - ac.pos.z) < 900) this.setup = false; }
-        else { const vzCmd = clamp(-0.03 * e, -70, 70); hdgCmd = Math.asin(clamp(-vzCmd / Math.max(v, 20), -0.8, 0.8)); }
+        else { const vzCmd = clamp(-0.065 * e, -70, 70); hdgCmd = Math.asin(clamp(-vzCmd / Math.max(v, 20), -0.8, 0.8)); }
       }
       else { const vzCmd = clamp(-0.08 * e, -5, 5); hdgCmd = Math.asin(clamp(-vzCmd / Math.max(v, 20), -0.4, 0.4)); } // cascade: offset → lateral speed → heading
       const bankCmd = clamp(-2.0 * wrapPI(hdgCmd - ac.headingRad), -0.45, 0.45) * (this.phase === 'flare' ? 0.25 : 1);
