@@ -1994,17 +1994,20 @@ class AutoLand {
     if (this.phase !== 'rollout') {
       ac.flaps = dist < 4500 ? 3 : 2;
       // lateral: track the centreline (heading east)
-      const e = ac.pos.z - RW.z, far = dist > 4300 || ac.pos.x > aim;
+      const e = ac.pos.z - RW.z;
+      // established = on the extended centreline, inside 4.4 km, heading roughly east; otherwise fly to the capture point
+      if (this.phase === 'capture' && dist > 300 && dist < 4400 && Math.abs(e) < 250 && Math.abs(wrapPI(ac.headingRad)) < 0.5) this.phase = 'glide';
+      if (this.phase === 'glide' && (Math.abs(e) > 450 || dist < -50)) this.phase = 'capture';
+      const far = this.phase === 'capture';
       let hdgCmd;
-      if (far) { const tx = aim - 4300, tz = RW.z; hdgCmd = Math.atan2(-(tz - ac.pos.z), tx - ac.pos.x); if (ac.pos.x > aim - 4300 && Math.abs(e) < 300 && dist > 0) hdgCmd = clamp(e * 0.004, -0.6, 0.6); }
+      if (far) { const tx = aim - 4600, tz = RW.z, dC = Math.hypot(tx - ac.pos.x, tz - ac.pos.z); hdgCmd = dC > 700 ? Math.atan2(-(tz - ac.pos.z), tx - ac.pos.x) : clamp(e * 0.004, -0.6, 0.6); }
       else { const vzCmd = clamp(-0.08 * e, -5, 5); hdgCmd = Math.asin(clamp(-vzCmd / Math.max(v, 20), -0.4, 0.4)); } // cascade: offset → lateral speed → heading
       const bankCmd = clamp(-2.0 * wrapPI(hdgCmd - ac.headingRad), -0.45, 0.45) * (this.phase === 'flare' ? 0.25 : 1);
       inp.roll = rateToInput(ac, 'r', 1.8 * (bankCmd - ac.bankRad) - 0.3 * ac.w.x);
       inp.yaw = clamp(-ac.beta * 3, -1, 1);
       // vertical: glide slope (3°), flare at 12 m, retard
       const hgs = Math.max(dist, 0) * Math.tan(3 * D2R);
-      let vsCmd = far ? clamp((Math.max(hgs, 250) - h) * 0.1, -6, 4) : clamp(-v * Math.sin(3 * D2R) + 0.22 * (hgs - h), -9, 3);
-      if (!far && this.phase === 'capture') this.phase = 'glide';
+      let vsCmd = far ? clamp((250 - h) * 0.1, -6, 4) : clamp(-v * Math.sin(3 * D2R) + 0.22 * (hgs - h), -9, 3);
       const hr = ac.pos.y - Math.max(groundAt(ac.pos.x, ac.pos.z), 0); // height above the runway level
       if (this.phase === 'glide' && hr < 12 && dist < 900) this.phase = 'flare';
       const glideSink = v * Math.sin(3 * D2R);
