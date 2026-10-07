@@ -2564,7 +2564,7 @@ function simStep(dt) {
       if (p.maneuver) { if (p.maneuver.update(dt)) { const m = p.maneuver; p.maneuver = null; if (m.aborted) toast('Maneuver aborted (low altitude) — wings level'); } }
       else if (game.autoland) { if (game.autoland.update(dt)) { game.autoland = null; game.landed = true; toast('Auto-land complete — Auto-taxi takes you to a stand'); } }
       else if (p.taxi) { p.input.pitch = p.input.roll = p.input.yaw = 0; if (p.taxi.update(dt)) p.taxi = null; }
-      manualInputs(dt);
+      if (!p.taxi && !game.autoland) manualInputs(dt); // assists own the controls while active (keys cancel them)
       p.physicsStep(dt);
     }
     p.syncRoot();
