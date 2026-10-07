@@ -1930,7 +1930,7 @@ class TaxiPilot {
     ac.axes();
     while (pts.length > 1) { const dx = pts[0][0] - ac.pos.x, dz = pts[0][1] - ac.pos.z; if (dx * _fw.x + dz * _fw.z < 0 && Math.hypot(dx, dz) < 140) { pts.shift(); kinds.shift(); } else break; }
     this.pts = [[ac.pos.x, ac.pos.z], ...pts]; this.kinds = ['start', ...kinds];
-    if (lineUp) { const last = this.pts[this.pts.length - 1]; this.pts.push([Math.max(last[0], ac.pos.x) + 70, RW.z]); this.kinds.push('end'); }
+    if (lineUp) { const last = this.pts[this.pts.length - 1]; this.pts.push([last[0] + 70, RW.z]); this.kinds.push('end'); }
     if (stand !== null) { const s = standStop(stand, ac); this.pts.push([s.x, s.z]); this.kinds.push('end'); }
     this.holds = []; for (let i = 0; i < this.kinds.length - 1; i++) if (this.kinds[i] === 'hold' && this.kinds[i + 1] === 'rwy') this.holds.push(i);
     this.cleared = {}; this.seg = 0; this.done = false; this.waiting = false;
@@ -1958,7 +1958,11 @@ class TaxiPilot {
       const hp = P[hold], dh = Math.hypot(hp[0] - ac.pos.x, hp[1] - ac.pos.z);
       if (dh < 160) {
         if (runwayFreeFor(ac)) { this.cleared[hold] = true; claimRunway(ac); }
-        else { this.waiting = true; vT = Math.min(vT, Math.sqrt(2 * 1.0 * Math.max(dh - 4, 0))); }
+        else {
+          this.waiting = true; vT = Math.min(vT, Math.sqrt(2 * 1.2 * Math.max(dh - 4, 0)));
+          const pv = P[Math.max(hold - 1, 0)], tx = hp[0] - pv[0], tz = hp[1] - pv[1];
+          if (dh < 8 || ((ac.pos.x - pv[0]) * tx + (ac.pos.z - pv[1]) * tz) / ((tx * tx + tz * tz) || 1) > 1) { vT = 0; ac.steer = 0; } // at/over the line: stop, don't hunt
+        }
       }
     }
     const v = ac.vel.dot(_fw);
